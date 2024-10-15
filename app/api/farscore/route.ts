@@ -1,199 +1,180 @@
 import { init, fetchQuery } from "@airstack/node";
 import { NextRequest, NextResponse } from "next/server";
 import { unstable_cache } from 'next/cache';
+import axios, { AxiosResponse } from 'axios';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const apiKey = process.env.AIRSTACK_API_KEY;
 if (!apiKey) {
   throw new Error("AIRSTACK_API_KEY is not defined");
 }
+
 init(apiKey);
 
-console.log("Airstack API initialized");
+const server = "https://hubs.airstack.xyz";
 
-// Simple in-memory cache
-const cache: { [key: string]: { data: any; timestamp: number } } = {};
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
-
-const userQuery = `
-query GetUserFarcasterData($fid: String!, $limit: Int!) {
-  Socials(
-    input: {filter: {dappName: {_eq: farcaster}, identity: {_eq: $fid}}, blockchain: ethereum}
-  ) {
-    Social {
-      profileName
-      profileDisplayName
-      userId
-      farcasterProfile {
-        fname
-        fid
-        followingCount
-        followerCount
-      }
-      farcasterScore {
-        score
-        rank
-      }
-    }
-  }
-  Farcaster(input: {filter: {fid: {_eq: $fid}}}) {
-    Casts(limit: $limit) {
-      hash
-      text
-      timestamp
-    }
-  }
-}
-`;
-
-async function fetchAndCacheUserData(fid: string) {
-  const cacheKey = `farcaster_${fid}`;
-  const cachedData = cache[cacheKey];
-
-  if (cachedData && Date.now() - cachedData.timestamp < CACHE_DURATION) {
-    console.log("Returning cached data for FID:", fid);
-    return cachedData.data;
-  }
-
-  console.log(`Fetching data from Airstack for FID: ${fid}`);
-  const { data, error } = await fetchQuery(userQuery, { fid, limit: 100 });
-
-  if (error) {
-    throw new Error(`Airstack API error: ${error.message}`);
-  }
-
-  cache[cacheKey] = { data, timestamp: Date.now() };
-  return data;
-}
-
-async function checkNewCasts(fid: string) {
-  const cacheKey = `farcaster_${fid}`;
-  const cachedData = cache[cacheKey];
-
-  if (!cachedData) {
-    return await fetchAndCacheUserData(fid);
-  }
-
-  const { data: newData } = await fetchQuery(userQuery, { fid, limit: 10 });
-  const oldCasts = cachedData.data.Farcaster.Casts;
-  const newCasts = newData.Farcaster.Casts;
-
-  if (newCasts[0].hash !== oldCasts[0].hash) {
-    console.log("New casts found, updating cache");
-    cache[cacheKey] = { data: newData, timestamp: Date.now() };
-    return newData;
-  }
-
-  console.log("No new casts found, returning cached data");
-  return cachedData.data;
-}
-
-const likesReceivedQuery = `
-query LikesReceived($blockchain: String!, $eq: String!) {
-  FarcasterCasts(
-    input: {filter: {blockchain: {_eq: $blockchain}, fid: {_eq: $eq}}}
-  ) {
-    Cast {
-      numberOfLikes
-    }
-  }
-}
-`;
-
-const cachedFetchLikesData = unstable_cache(
+const cachedFetchAllData = unstable_cache(
   async (userId: string) => {
-    console.log(`Fetching likes data for userId: ${userId}`);
+    console.log(`Attempting to fetch data for userId: ${userId}`);
+    let allCasts: any[] = [];
+    let totalLikes = 0;
+    let totalRecasts = 0;
+    let totalReplies = 0;
+    let userInfo: any = null;
+    let firstCastTimestamp: number | null = null;
+    const farcasterEpoch = new Date('2021-01-01T00:00:00Z').getTime() / 1000;
+
+    const MAX_CASTS = 1000000; // Increase this value to fetch more casts
+    const RATE_LIMIT_DELAY = 60000 / 3000; // Delay in ms to respect rate limit
+
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
     try {
-      const likesData = await fetchQuery(likesReceivedQuery, { blockchain: 'ALL', _eq: `fc_fid:${userId}` });
-      console.log("Raw likes data:", JSON.stringify(likesData, null, 2));
-      return likesData;
+      // Fetch user details using Airstack API
+      const userDetailsQuery = `
+        query MyQuery($_eq: SocialDappName, $_eq1: String, $blockchain: Blockchain!) {
+          Socials(
+            input: {filter: {dappName: {_eq: $_eq}, userId: {_eq: $_eq1}}, blockchain: $blockchain}
+          ) {
+            Social {
+              profileDisplayName
+              profileHandle
+              profileImageContentValue {
+                image {
+                  small
+                }
+              }
+              farcasterScore {
+                farRank
+                farScore
+              }
+              followerCount
+            }
+          }
+        }
+      `;
+
+      const userDetailsResponse = await fetchQuery(userDetailsQuery, {
+        _eq: "farcaster",
+        _eq1: userId,
+        blockchain: 'ethereum'
+      });
+
+      userInfo = userDetailsResponse.data?.Socials?.Social[0] || null;
+
+      // Fetch casts using Hub API
+      let pageToken: string | null = "";
+      let requestCount = 0;
+      do {
+        if (requestCount >= 300) {
+          console.log("Rate limit reached, waiting for 1 minute...");
+          await sleep(60000);
+          requestCount = 0;
+        }
+
+        const castsResponse: AxiosResponse<any> = await axios.get(`${server}/v1/castsByFid`, {
+          params: {
+            fid: userId,
+            pageToken: pageToken || undefined,
+            limit: 1000 // Keep this at 1000 to avoid potential API limitations
+          },
+          headers: {
+            "Content-Type": "application/json",
+            "x-airstack-hubs": apiKey,
+          },
+        });
+
+        requestCount++;
+        await sleep(RATE_LIMIT_DELAY);
+
+        const newCasts = castsResponse.data.messages || [];
+        
+        if (newCasts.length > 0 && firstCastTimestamp === null) {
+          firstCastTimestamp = newCasts[0].data.timestamp;
+        }
+
+        for (const cast of newCasts) {
+          totalRecasts += cast.data.reactionCounts?.recast || 0;
+          if (cast.data.parentCastId) {
+            totalReplies++;
+          }
+        }
+
+        allCasts = allCasts.concat(newCasts);
+
+        pageToken = castsResponse.data.nextPageToken || null;
+
+        console.log(`Fetched ${allCasts.length} casts so far...`);
+
+      } while (pageToken);
+
+      console.log(`Total casts fetched: ${allCasts.length}`);
+
+      // Fetch total likes using reaction Hub API
+      pageToken = "";
+      requestCount = 0;
+      do {
+        if (requestCount >= 300) {
+          console.log("Rate limit reached, waiting for 1 minute...");
+          await sleep(600);
+          requestCount = 0;
+        }
+
+        const reactionsResponse: AxiosResponse<any> = await axios.get(`${server}/v1/reactionsByFid`, {
+          params: {
+            fid: userId,
+            pageToken: pageToken || undefined,
+            limit: 1000,
+            reaction_type: 1 // 1 for likes
+          },
+          headers: {
+            "Content-Type": "application/json",
+            "x-airstack-hubs": apiKey,
+          },
+        });
+
+        requestCount++;
+        await sleep(RATE_LIMIT_DELAY);
+
+        totalLikes += reactionsResponse.data.messages.length;
+
+        pageToken = reactionsResponse.data.nextPageToken || null;
+      } while (pageToken);
+
+      console.log("Total likes fetched:", totalLikes);
+      console.log("Total replies fetched:", totalReplies);
+
+      return { 
+        totalCasts: allCasts.length,
+        totalLikes,
+        totalRecasts,
+        totalReplies,
+        userInfo,
+        firstCastTimestamp
+      };
+      
     } catch (error) {
-      console.error("Error fetching likes data:", error);
-      return { error: "Failed to fetch likes data" };
+      console.error("Error fetching data:", error);
+      return { error: error instanceof Error ? error.message : "An unexpected error occurred" };
     }
   },
-  ['likes-data'],
-  { revalidate: 3600 } // Cache for 1 hour
-);
-
-const cachedFetchUserData = unstable_cache(
-  async (userId: string) => {
-    console.log(`Fetching user data for userId: ${userId}`);
-    try {
-      const userData = await fetchAndCacheUserData(userId);
-      return userData;
-    } catch (error) {
-      console.error("Error fetching user data:", error);
-      return { error: "Failed to fetch user data" };
-    }
-  },
-  ['user-data'],
-  { revalidate: 3600 } // Cache for 1 hour
+  ['all-data'],
+  { revalidate: 3600 }
 );
 
 export async function GET(req: NextRequest) {
-  console.log(`API route called at ${new Date().toISOString()}`);
-  console.log(`Full URL: ${req.url}`);
-
-  const userId = req.nextUrl.searchParams.get("userId");
-  console.log(`Requested userId: ${userId}`);
-
-  if (!userId) {
-    console.log("Error: userId parameter is missing");
-    return NextResponse.json(
-      { error: "userId parameter is required" },
-      { status: 400 }
-    );
-  }
-
   try {
-    console.log(`Attempting to fetch data for userId: ${userId}`);
-    const [userData, likesData] = await Promise.all([
-      cachedFetchUserData(userId),
-      cachedFetchLikesData(userId)
-    ]);
-    console.log(`Data fetching completed for userId: ${userId}`);
-
-    console.log("User data:", JSON.stringify(userData, null, 2));
-    console.log("Likes data:", JSON.stringify(likesData, null, 2));
-
-    if (userData.error) {
-      console.error("Airstack API error (user data):", userData.error);
-      return NextResponse.json(
-        { error: userData.error.message },
-        { status: 500 }
-      );
+    const userId = req.nextUrl.searchParams.get("userId");
+    if (!userId) {
+      return NextResponse.json({ error: "userId is required" }, { status: 400 });
     }
 
-    const socialData = userData.data?.Socials?.Social[0];
-    if (!socialData) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
-    }
-
-    let totalLikesReceived = 0;
-    if (likesData && 'data' in likesData && likesData.data?.FarcasterCasts?.Cast) {
-      totalLikesReceived = likesData.data.FarcasterCasts.Cast.reduce(
-        (sum: number, cast: any) => sum + (cast.numberOfLikes || 0),
-        0
-      );
-    } else {
-      console.warn("Likes data is missing or in unexpected format");
-    }
-
-    const responseData = {
-      userData: socialData,
-      farcasterScore: socialData.socialCapital?.socialCapitalScore || 0,
-      farcasterRank: socialData.socialCapital?.socialCapitalRank || 0,
-      totalLikesReceived,
-    };
-
-    console.log("Response data:", JSON.stringify(responseData, null, 2));
-
-    return NextResponse.json(responseData);
+    const data = await cachedFetchAllData(userId);
+    return NextResponse.json(data);
   } catch (error) {
-    console.error("Unexpected error:", error);
+    console.error("Unexpected error in GET function:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "An unexpected error occurred" },
       { status: 500 }

@@ -82,8 +82,9 @@ const leagueSpartanFont = fetch(
       username: searchParams.get('username') || 'unknown',
       fid: searchParams.get('fid') || 'N/A',
       totalCasts: searchParams.get('totalCasts') || '0',
-      totalComments: searchParams.get('totalComments') || '0',
-      totalReactions: searchParams.get('totalReactions') || '0',
+      totalReplies: searchParams.get('totalReplies') || '0',
+      totalLikes: searchParams.get('totalLikes') || '0',
+      totalRecasts: searchParams.get('totalRecasts') || '0',
       firstCastDate: searchParams.get('firstCastDate') || 'N/A',
       daysRegistered: searchParams.get('daysRegistered') || '0',
       farcasterScore: searchParams.get('farcasterScore') || '0',
@@ -131,7 +132,7 @@ const leagueSpartanFont = fetch(
              </div>
             <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left',margin: '0',marginRight:'50px' }}>
                <p style={{fontSize:'35px',margin:'0',paddingBottom:'10px'}}>FID: {userData.fid}</p>
-               <p style={{fontSize:'35px',margin:'0',paddingBottom:'10px'}}>Followers: {userData.followers}</p>
+               <p style={{fontSize:'35px',margin:'0',paddingBottom:'10px'}}>Followers: {formatNumber(parseFloat(userData.followers))}</p>
             </div>
              
            <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', margin: 'auto',marginLeft:'20px' }}>
@@ -143,15 +144,15 @@ const leagueSpartanFont = fetch(
           <div style={{ display: 'flex', justifyContent: 'space-between',marginBottom:'5px',marginLeft:'100px',marginRight:'100px',textAlign:'center',marginTop:'5px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'center',margin: 'auto',paddingTop:'10px',paddingBottom:'10px',paddingLeft:'100px',paddingRight:'100px',alignItems:'center' }}>
              <p style={{fontSize:'35px',margin:'auto',marginBottom:'5px'}}>Total Casts</p>
-              <p style={{ fontSize: '90px', fontWeight: 'bold',  }}>{userData.totalCasts}</p> 
+              <p style={{ fontSize: '90px', fontWeight: 'bold',  }}>{formatNumber(parseFloat(userData.totalCasts))}</p> 
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'center',margin: 'auto',paddingTop:'10px',paddingBottom:'10px',paddingLeft:'100px',paddingRight:'100px',alignItems:'center' }}>
              <p style={{fontSize:'35px',margin:'auto',marginBottom:'5px'}}>Total Replies</p>
-              <p style={{ fontSize: '90px', fontWeight: 'bold' }}>{userData.totalComments}</p>
+              <p style={{ fontSize: '90px', fontWeight: 'bold' }}>{userData.totalReplies}</p>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'center',margin: 'auto',paddingTop:'10px',paddingBottom:'10px',paddingLeft:'100px',paddingRight:'100px',alignItems:'center' }}>
-             <p style={{fontSize:'35px',margin:'auto',marginBottom:'5px'}}>Total Reactions</p>
-              <p style={{ fontSize: '90px', fontWeight: 'bold' }}>{userData.totalReactions}</p>
+             <p style={{fontSize:'35px',margin:'auto',marginBottom:'5px'}}>Total Likes</p>
+              <p style={{ fontSize: '90px', fontWeight: 'bold' }}>{userData.totalLikes}</p>
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between',flex: 1,marginLeft:'100px',marginRight:'150px',marginTop:'15px',marginBottom:'5px',textAlign:'center' }}>
