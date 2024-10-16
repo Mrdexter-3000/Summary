@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@airstack/node": "latest",
+    "@neynar/nodejs-sdk": "^1.61.0",
     "@vercel/og": "^0.6.3",
     "axios": "^1.7.7",
     "dotenv": "^16.4.5",

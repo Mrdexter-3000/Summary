@@ -91,6 +91,8 @@ const leagueSpartanFont = fetch(
       farcasterRank: searchParams.get('farcasterRank') || '0',
       profileImageUrl: searchParams.get('profileImageUrl') || '',
       followers: searchParams.get('followers') || '0',
+      castFrequency: searchParams.get('castFrequency') || '0',
+      storageUsage: searchParams.get('storageUsage') || '0',
     };
   
     const profileImage = userData.profileImageUrl
@@ -144,15 +146,15 @@ const leagueSpartanFont = fetch(
           <div style={{ display: 'flex', justifyContent: 'space-between',marginBottom:'5px',marginLeft:'100px',marginRight:'100px',textAlign:'center',marginTop:'5px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'center',margin: 'auto',paddingTop:'10px',paddingBottom:'10px',paddingLeft:'100px',paddingRight:'100px',alignItems:'center' }}>
              <p style={{fontSize:'35px',margin:'auto',marginBottom:'5px'}}>Total Casts</p>
-              <p style={{ fontSize: '90px', fontWeight: 'bold',  }}>{formatNumber(parseFloat(userData.totalCasts))}</p> 
+              <p style={{ fontSize: '90px', fontWeight: 'bold' }}>{formatNumber(parseFloat(userData.totalCasts))}</p> 
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'center',margin: 'auto',paddingTop:'10px',paddingBottom:'10px',paddingLeft:'100px',paddingRight:'100px',alignItems:'center' }}>
-             <p style={{fontSize:'35px',margin:'auto',marginBottom:'5px'}}>Total Replies</p>
-              <p style={{ fontSize: '90px', fontWeight: 'bold' }}>{userData.totalReplies}</p>
+             <p style={{fontSize:'35px',margin:'auto',marginBottom:'5px'}}>Avg Casts/Day</p>
+              <p style={{ fontSize: '90px', fontWeight: 'bold' }}>{userData.castFrequency}</p>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'center',margin: 'auto',paddingTop:'10px',paddingBottom:'10px',paddingLeft:'100px',paddingRight:'100px',alignItems:'center' }}>
              <p style={{fontSize:'35px',margin:'auto',marginBottom:'5px'}}>Total Likes</p>
-              <p style={{ fontSize: '90px', fontWeight: 'bold' }}>{userData.totalLikes}</p>
+              <p style={{ fontSize: '90px', fontWeight: 'bold' }}>{formatNumber(parseFloat(userData.totalLikes))}</p>
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between',flex: 1,marginLeft:'100px',marginRight:'150px',marginTop:'15px',marginBottom:'5px',textAlign:'center' }}>

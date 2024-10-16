@@ -39,6 +39,8 @@ interface UserData {
   farcasterScore: number;
   farcasterRank: number;
   followers: number;
+  castFrequency: number;
+  storageUsage: number;
 }
 
 const fetchUserData = async (fid: string): Promise<UserData | null> => {
@@ -59,15 +61,14 @@ const fetchUserData = async (fid: string): Promise<UserData | null> => {
     }
 
     const userInfo = data.userInfo || {};
-    const casts = data.FarcasterCasts?.Cast || [];
 
     const farcasterEpoch = new Date('2021-01-01T00:00:00Z').getTime() / 1000;
     const firstCastTimestamp = data.firstCastTimestamp;
     const firstCastDate = firstCastTimestamp 
-      ? new Date((parseInt(firstCastTimestamp) + farcasterEpoch) * 1000).toISOString().split('T')[0] 
+      ? new Date((firstCastTimestamp + farcasterEpoch) * 1000).toISOString().split('T')[0] 
       : 'N/A';
     const daysRegistered = firstCastTimestamp 
-      ? Math.floor((Date.now() - (parseInt(firstCastTimestamp) + farcasterEpoch) * 1000) / (1000 * 60 * 60 * 24)) 
+      ? Math.floor((Date.now() - (firstCastTimestamp + farcasterEpoch) * 1000) / (1000 * 60 * 60 * 24)) 
       : 0;
 
     const userData: UserData = {
@@ -76,20 +77,23 @@ const fetchUserData = async (fid: string): Promise<UserData | null> => {
       fid,
       profileDisplayName: userInfo.profileDisplayName || 'Unknown',
       profileHandle: userInfo.profileHandle || 'unknown',
-      profileImageUrl: userInfo.profileImageContentValue?.image?.small || '',
+      profileImageUrl: userInfo.profileImageContentValue?.image?.small || 'https://i.imgur.com/UhV7H97.jpeg',
       totalCasts: data.totalCasts || 0,
-      totalLikes: data.totalLikes || 0,
-      totalRecasts: data.totalRecasts || 0,
-      totalReplies: data.totalReplies || 0,
-      totalLikesReceived: data.totalLikesReceived || 0,
-      totalRecastsReceived: data.totalRecastsReceived || 0,
+      totalLikes: 0, // Set to 0 as per instruction
+      totalRecasts: 0, // Not available from Neynar API
+      totalReplies: 0, // Not available from Neynar API
+      totalLikesReceived: 0, // Not available from Neynar API
+      totalRecastsReceived: 0, // Not available from Neynar API
       firstCastDate,
       daysRegistered,
       farcasterScore: userInfo.farcasterScore?.farScore || 0,
       farcasterRank: userInfo.farcasterScore?.farRank || 0,
       followers: parseInt(userInfo.followerCount) || 0,
+      castFrequency: data.castFrequency || 0,
+      storageUsage: data.storageUsage || 0,
     };
     console.log(`Total casts for user ${fid}: ${userData.totalCasts}`);
+    console.log(`Storage usage for user ${fid}: ${userData.storageUsage}`);
 
     return userData;
   } catch (error) {
@@ -210,6 +214,7 @@ const frameHandler = frames(async (ctx) => {
     ogImageUrl.searchParams.append('farcasterRank', userData.farcasterRank.toString());
     ogImageUrl.searchParams.append('followers', userData.followers.toString());
     ogImageUrl.searchParams.append('profileImageUrl', userData.profileImageUrl);
+    ogImageUrl.searchParams.append('castFrequency', userData.castFrequency.toString());
 
     console.log("OG Image URL:", ogImageUrl);
 
