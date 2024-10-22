@@ -8,6 +8,7 @@
     "@neynar/nodejs-sdk": "^1.61.0",
     "@vercel/og": "^0.6.3",
     "axios": "^1.7.7",
+    "bootstrap-icons": "^1.11.3",
     "dotenv": "^16.4.5",
     "frames.js": "latest",
     "moralis": "^2.27.2",

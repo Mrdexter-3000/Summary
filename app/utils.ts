@@ -25,7 +25,7 @@ export function appURL(): string {
     return 'http://localhost:3001';
   } else {
     console.warn('Unable to determine app URL, using fallback');
-    return 'https://fc-aniversary-v3.vercel.app';
+    return 'https://analytics-summary.vercel.app/';
   }
 }
 

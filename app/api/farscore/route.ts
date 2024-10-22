@@ -111,17 +111,11 @@ const cachedFetchAllData = unstable_cache(
 
 const firstCastCache = unstable_cache(
   async (userId: string) => {
-    const firstCastResponse = await axios.get(`https://hub-api.neynar.com/v1/castsByFid?pageSize=1&fid=${userId}`, {
-      headers: {
-        'accept': 'application/json',
-        'x-api-key': NEYNAR_API_KEY
-      }
-    });
+    const firstCastResponse = await axios.get(`https://fnames.farcaster.xyz/transfers?fid=${userId}`);
+    const firstCastData = firstCastResponse.data;
+    const firstCastTimestamp = firstCastData.transfers[0]?.timestamp;
 
-    if (firstCastResponse.data && firstCastResponse.data.messages && firstCastResponse.data.messages.length > 0) {
-      return firstCastResponse.data.messages[0].data.timestamp;
-    }
-    return null;
+    return firstCastTimestamp || null;
   },
   ['first-cast'],
   { revalidate: 86400 } // Cache for 24 hours

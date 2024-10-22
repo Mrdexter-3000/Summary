@@ -1,26 +1,24 @@
 import { Button } from "frames.js/next";
-import React from "react";
+import React, { cache } from "react";
 import { frames } from "./frames";
 import { appURL, formatNumber } from "../utils";
-import { text } from "stream/consumers";
+import { NeynarAPIClient, ReactionsType } from "@neynar/nodejs-sdk";
 import axios from 'axios';
 import dotenv from 'dotenv';
+import { unstable_cache } from 'next/cache';
 
 dotenv.config();
 
+const neynarClient = new NeynarAPIClient(process.env.NEYNAR_API_KEY || '');
 
 interface State {
-  lastFid?: string | null;
+  lastFid?: string
 }
 
 
 
-interface EngagementData {
-  like: string;
-  reply: string;
-  recast: string;
-}
 
+const frameHandler = frames(async (ctx) => {
 interface UserData {
   name: string;
   username: string;
@@ -29,10 +27,9 @@ interface UserData {
   profileHandle: string;
   profileImageUrl: string;
   totalCasts: number;
-  totalLikes: number;
+  totalLikesReceived: number;
   totalRecasts: number;
   totalReplies: number;
-  totalLikesReceived: number;
   totalRecastsReceived: number;
   firstCastDate: string;
   daysRegistered: number;
@@ -41,7 +38,14 @@ interface UserData {
   followers: number;
   castFrequency: number;
   storageUsage: number;
+  farcasterAge: string;
+  farcasterAgePercentile: number;
+  farcasterStatus: string;
 }
+
+  let userData: UserData | null = null;
+  let error: string | null = null;
+  let isLoading = false;
 
 const fetchUserData = async (fid: string): Promise<UserData | null> => {
   try {
@@ -61,15 +65,25 @@ const fetchUserData = async (fid: string): Promise<UserData | null> => {
     }
 
     const userInfo = data.userInfo || {};
-
-    const farcasterEpoch = new Date('2021-01-01T00:00:00Z').getTime() / 1000;
     const firstCastTimestamp = data.firstCastTimestamp;
+
     const firstCastDate = firstCastTimestamp 
-      ? new Date((firstCastTimestamp + farcasterEpoch) * 1000).toISOString().split('T')[0] 
+      ? new Date(firstCastTimestamp * 1000).toISOString().split('T')[0] 
       : 'N/A';
     const daysRegistered = firstCastTimestamp 
-      ? Math.floor((Date.now() - (firstCastTimestamp + farcasterEpoch) * 1000) / (1000 * 60 * 60 * 24)) 
+      ? Math.floor((Date.now() - firstCastTimestamp * 1000) / (1000 * 60 * 60 * 24)) 
       : 0;
+
+    // Calculate Farcaster age
+    const years = Math.floor(daysRegistered / 365);
+    const months = Math.floor((daysRegistered % 365) / 30);
+    const days = daysRegistered % 30;
+    const farcasterAge = years > 0 ? `${years}Y ${months}M ${days}D` : `${months}M ${days}D`;
+    
+    const farcasterAgePercentile = calculateFarcasterAgePercentile(daysRegistered);
+    const totalCasts = data.totalCasts || 0;
+    const followers = parseInt(userInfo.followerCount) || 0;
+    const farcasterStatus = determineFarcasterStatus(farcasterAgePercentile, totalCasts, followers);
 
     const userData: UserData = {
       name: userInfo.profileDisplayName || 'Unknown',
@@ -78,22 +92,22 @@ const fetchUserData = async (fid: string): Promise<UserData | null> => {
       profileDisplayName: userInfo.profileDisplayName || 'Unknown',
       profileHandle: userInfo.profileHandle || 'unknown',
       profileImageUrl: userInfo.profileImageContentValue?.image?.small || 'https://i.imgur.com/UhV7H97.jpeg',
-      totalCasts: data.totalCasts || 0,
-      totalLikes: 0, // Set to 0 as per instruction
+      totalCasts,
       totalRecasts: 0, // Not available from Neynar API
       totalReplies: 0, // Not available from Neynar API
-      totalLikesReceived: 0, // Not available from Neynar API
+      totalLikesReceived: 0, // We're not fetching this anymore
       totalRecastsReceived: 0, // Not available from Neynar API
       firstCastDate,
       daysRegistered,
       farcasterScore: userInfo.farcasterScore?.farScore || 0,
       farcasterRank: userInfo.farcasterScore?.farRank || 0,
-      followers: parseInt(userInfo.followerCount) || 0,
+      followers,
       castFrequency: data.castFrequency || 0,
       storageUsage: data.storageUsage || 0,
+      farcasterAge,
+      farcasterAgePercentile,
+      farcasterStatus,
     };
-    console.log(`Total casts for user ${fid}: ${userData.totalCasts}`);
-    console.log(`Storage usage for user ${fid}: ${userData.storageUsage}`);
 
     return userData;
   } catch (error) {
@@ -102,10 +116,69 @@ const fetchUserData = async (fid: string): Promise<UserData | null> => {
   }
 };
 
-const frameHandler = frames(async (ctx) => {
-  let userData: UserData | null = null;
-  let error: string | null = null;
-  let isLoading = false;
+// Function to calculate Farcaster age percentile
+const calculateFarcasterAgePercentile = (daysRegistered: number): number => {
+  const farcasterLaunchDate = new Date('2021-01-01').getTime();
+  const now = Date.now();
+  const totalDaysSinceLaunch = Math.floor((now - farcasterLaunchDate) / (1000 * 60 * 60 * 24));
+  
+  const percentile = (daysRegistered / totalDaysSinceLaunch) * 100;
+  
+  return Math.min(100, Math.max(0, Math.round(percentile)));
+};
+
+// Function to determine Farcaster status
+const determineFarcasterStatus = (agePercentile: number, totalCasts: number, followers: number): string => {
+  const engagementScore = Math.log10(totalCasts + 1) * Math.log10(followers + 1);
+
+  if (agePercentile > 85 && engagementScore > 10) return "Legendary Pioneer";
+  if (agePercentile > 80 && engagementScore > 9) return "Esteemed Elder";
+  if (agePercentile > 60 && engagementScore > 8) return "Seasoned Caster";
+  if (agePercentile > 40 && engagementScore > 6) return "Established Resident";
+  if (agePercentile > 20 && engagementScore > 4) return "Active Participant";
+  return "Rising Star";
+};
+
+const generateShareText = (userData: UserData | null): string => {
+  if (!userData) return '';
+  
+  return encodeURIComponent(
+    `🌟 Just discovered I'm a ${userData.farcasterStatus} on Farcaster! ${
+      userData.farcasterStatus === "Legendary Pioneer" 
+        ? "Been here since day one! 🏆" 
+        : userData.farcasterStatus === "Esteemed Elder" 
+        ? "Walking the path since early days! 👑" 
+        : userData.farcasterStatus === "Seasoned Caster" 
+        ? "Building my legacy on Farcaster! 🌱" 
+        : userData.farcasterStatus === "Established Resident" 
+        ? "Making my mark on Farcaster! 💫" 
+        : userData.farcasterStatus === "Active Participant" 
+        ? "Growing strong in the Farcaster community! 🌿" 
+        : "Starting my Farcaster journey! ⭐"
+    }
+
+Check your status with @0xdexter's Analytics Summary Frame!`
+  );
+};
+
+const generateShareUrl = (userData: UserData | null, fid: string | null): string => {
+  if (!userData || !fid) return '';
+  
+  // Create a clean base URL for sharing
+  const baseUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(
+    `🌟 Check out my Farcaster Activity Summary!\n\nI'm a ${userData.farcasterStatus} 🏆\n\nFrame by @0xdexter`
+  )}`;
+
+  // Add a clean frame URL as embed
+  const frameUrl = `${appURL()}/frames?userfid=${fid}`;
+  
+  return `${baseUrl}&embeds[]=${encodeURIComponent(frameUrl)}`;
+};
+
+const generateCleanShareUrl = (fid: string): string => {
+  const baseUrl = appURL();
+  return `${baseUrl}/frames?userfid=${fid}`;
+};
 
   // Extract 'fid' from the URL, frameActionBody, or state
   const extractFid = (url: string): string | null => {
@@ -138,7 +211,7 @@ const frameHandler = frames(async (ctx) => {
   }
 
   console.log("Final FID used:", fid);
-
+  
   if (fid) {
     try {
       userData = await fetchUserData(fid);
@@ -153,130 +226,92 @@ const frameHandler = frames(async (ctx) => {
     error = "No FID provided";
   }
 
-  // Function to fetch Farscore data (if needed)
-  const fetchFarscoreData = async (fid: string) => {
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-      const response = await axios.get(`${apiUrl}/api/farscore?userId=${fid}`);
-      return response.data;
-    } catch (error) {
-      console.error("Error fetching Farscore data:", error);
-      if (axios.isAxiosError(error)) {
-        throw new Error("Farscore API HTTP error! status: " + (error.response?.status || "unknown"));
-      } else {
-        throw new Error("An unknown error occurred while fetching Farscore data");
-      }
-    }
-  };
+
 
   // Define SplashScreen
-  const SplashScreen = () => ({
-    image: "https://uqmhcw5knmkdj4wh.public.blob.vercel-storage.com/splash-Rdu7ATWoRkov7e7eYcpKORd5vuyCTD.gif",
-    buttons: [
-      <Button action="post" target={{ href: `${appURL()}` }}>
-        Check Me
-      </Button>
-    ],
-    input: {
-      text: "Enter your FID",
-    },
-  });
+  const SplashScreen = () => {
+    const imageUrl = "https://uqmhcw5knmkdj4wh.public.blob.vercel-storage.com/initial-animation%20(1)-jjzKhumfRRBYsviIAiRuzwTlrX9AzI.gif";
+    
+    return {
+      image: imageUrl,
+      imageOptions: {
+        headers: {
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'CDN-Cache-Control': 'public, max-age=31536000, immutable',
+          'Vercel-CDN-Cache-Control': 'public, max-age=31536000, immutable'
+        }
+      },
+      buttons: [
+        <Button action="post" target={{ href: `${appURL()}` }}>
+          Check Me
+        </Button>
+      ],
+      input: {
+        text: "Enter your FID",
+      },
+    };
+  };
 
   // Define ActivityScreen
   const ActivityScreen = () => {
-    console.log("Rendering ActivityScreen");
-    console.log("userData:", userData);
-
     if (!userData) {
       return {
-        image: `${appURL()}/api/og?error=${encodeURIComponent(error || "User data not available")}`,
+        image: `${appURL()}/api/og?e=${encodeURIComponent(error || "User data not available")}`,
         buttons: [
-          <Button action="post" target={{ href: `${appURL()}` }}>
-            Try Again
+          <Button action="post" target={{ href: `${appURL()}?userfid=${fid}` }}>
+            Refresh
           </Button>
-        ],
+        ]
       };
     }
 
     const ogImageUrl = new URL(`${appURL()}/api/og`);
-    ogImageUrl.searchParams.append('name', userData.name);
-    ogImageUrl.searchParams.append('username', userData.username);
-    ogImageUrl.searchParams.append('fid', userData.fid);
-    ogImageUrl.searchParams.append('totalCasts', userData.totalCasts.toString());
-    ogImageUrl.searchParams.append('totalReplies', userData.totalReplies.toString());
-    ogImageUrl.searchParams.append('totalLikes', userData.totalLikes.toString());
-    ogImageUrl.searchParams.append('totalRecasts', userData.totalRecasts.toString());
-    ogImageUrl.searchParams.append('totalLikesReceived', userData.totalLikesReceived.toString());
-    ogImageUrl.searchParams.append('totalRecastsReceived', userData.totalRecastsReceived.toString());
-    ogImageUrl.searchParams.append('firstCastDate', userData.firstCastDate);
-    ogImageUrl.searchParams.append('daysRegistered', userData.daysRegistered.toString());
-    ogImageUrl.searchParams.append('farcasterScore', userData.farcasterScore.toString());
-    ogImageUrl.searchParams.append('farcasterRank', userData.farcasterRank.toString());
-    ogImageUrl.searchParams.append('followers', userData.followers.toString());
-    ogImageUrl.searchParams.append('profileImageUrl', userData.profileImageUrl);
-    ogImageUrl.searchParams.append('castFrequency', userData.castFrequency.toString());
-
-    console.log("OG Image URL:", ogImageUrl);
-
+    ogImageUrl.searchParams.append('n', userData.name);
+    ogImageUrl.searchParams.append('u', userData.username);
+    ogImageUrl.searchParams.append('f', userData.fid);
+    ogImageUrl.searchParams.append('p', userData.profileImageUrl);
+    ogImageUrl.searchParams.append('s', userData.farcasterScore.toString());
+    ogImageUrl.searchParams.append('r', userData.farcasterRank.toString());
+    ogImageUrl.searchParams.append('fl', userData.followers.toString());
+    ogImageUrl.searchParams.append('a', userData.farcasterAge);
+    ogImageUrl.searchParams.append('st', userData.farcasterStatus);
+    ogImageUrl.searchParams.append('ap', userData.farcasterAgePercentile.toString());
+    ogImageUrl.searchParams.append('fd', userData.firstCastDate);
+    ogImageUrl.searchParams.append('tc', userData.totalCasts.toString());
+    
+    const shareUrl = generateShareUrl(userData, fid);
+    
     return {
       image: ogImageUrl.toString(),
       buttons: [
+        <Button action="post" target={{ href: `${appURL()}?userfid=${fid}` }}>
+          Refresh
+        </Button>,
         <Button action="link" target={shareUrl}>
           Share
         </Button>,
         <Button action="link" target="https://warpcast.com/0xdexter/0xa911067c">
           Tip here
         </Button>
-      ],
+      ]
     };
   };
 
-  // Define Share URL
-  const shareText = encodeURIComponent(
-    `🔍 Curious about your Moxie? All stats revealed here! 
-    frame by @0xdexter Tip for awesomeness`
-  );
-
-  const shareUrl = `https://warpcast.com/~/compose?text=${shareText}&embeds[]=https://moxie-stat.vercel.app/frames${
-    fid ? `?userfid=${fid}` : ""
-  }`;
-
-  // Define Buttons
-  const buttons = [];
-
-  if (!userData) {
-    buttons.push(
-      <Button action="post" target={{ href: `${appURL()}?userfid=${fid}` }}>
-        Refresh
-      </Button>,
-      <Button action="link" target={shareUrl}>
-        Share
-      </Button>,
-      <Button action="link" target="https://warpcast.com/0xdexter/0xa911067c">
-        Tip here
-      </Button>
-    );
-  } else {
-    buttons.push(
-      <Button action="link" target={shareUrl}>
-        Share
-      </Button>,
-      <Button action="link" target="https://warpcast.com/0xdexter/0xa911067c">
-        Tip here
-      </Button>
-    );
-  }
-
-  return fid && !error
-    ? {
-        ...ActivityScreen(),
-        buttons: buttons,
-      }
-    : {
-        ...SplashScreen(),
-        state: { lastFid: fid },
-      };
+  return fid && !error ? ActivityScreen() : SplashScreen();
 });
 
 export const GET = frameHandler;
 export const POST = frameHandler;
+
+
+
+
+
+
+
+
+
+
+
+
+
