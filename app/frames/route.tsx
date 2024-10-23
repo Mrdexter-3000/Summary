@@ -164,7 +164,7 @@ Check your status with @0xdexter's Analytics Summary Frame!`
 const generateShareUrl = (userData: UserData | null, fid: string | null): string => {
   if (!userData || !fid) return '';
   
-  // Create a clean base URL for sharing
+  // Create a clean base URL for 
   const baseUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(
     `🌟 Check out my Farcaster Activity Summary!\n\nI'm a ${userData.farcasterStatus} 🏆\n\nFrame by @0xdexter`
   )}`;
