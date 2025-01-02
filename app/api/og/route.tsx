@@ -24,25 +24,6 @@ function formatNumber(num: number): string {
   }
 }
 
-const interBoldFont = fetch(
-    new URL('../../assets/Inter-Bold.ttf', import.meta.url)
-  ).then((res) => res.arrayBuffer());
-
-const interSemiBoldFont = fetch(
-    new URL('../../assets/Inter-SemiBold.ttf', import.meta.url)
-  ).then((res) => res.arrayBuffer());
-
-const interExtraBoldFont = fetch(
-    new URL('../../assets/Inter-ExtraBold.ttf', import.meta.url)
-  ).then((res) => res.arrayBuffer());
-
-const interRegularFont = fetch(
-    new URL('../../assets/Inter-Regular.ttf', import.meta.url)
-  ).then((res) => res.arrayBuffer());
-
-const jerseyFont = fetch(
-    new URL('../../assets/Jersey-Regular.ttf', import.meta.url)
-  ).then((res) => res.arrayBuffer());
 
 const leagueSpartanFont = fetch(
     new URL('../../assets/LeagueSpartan.ttf', import.meta.url)
